@@ -15,132 +15,146 @@ declare const navigator: any;
 declare const window: any;
 
 export function testResultDirFromStartParams(startParams: StartTestParams) {
-    const uniqueTestId = testUniqueIdentifierFromStartParams(startParams);
+  const uniqueTestId = testUniqueIdentifierFromStartParams(startParams);
 
-    return path.resolve(constructTestInvocationResultDir(startParams.projectRoot, startParams.runId), uniqueTestId);
+  return path.resolve(constructTestInvocationResultDir(startParams.projectRoot, startParams.runId), uniqueTestId);
 }
 
 export function constructTestInvocationResultDir(projectRoot: string, runId: string) {
-    return path.resolve(constructResultDir(projectRoot), RUNS_DIR_NAME, runId);
+  return path.resolve(constructResultDir(projectRoot), RUNS_DIR_NAME, runId);
 }
 
 export function constructTestResultDir(projectRoot: string, runId: string, testId: string) {
-    return path.resolve(constructResultDir(projectRoot), RUNS_DIR_NAME, runId, testId);
+  return path.resolve(constructResultDir(projectRoot), RUNS_DIR_NAME, runId, testId);
 }
 
 export function constructResultDir(projectRoot: string) {
-    return path.resolve(projectRoot, RESULTS_DIR_NAME);
+  return path.resolve(projectRoot, RESULTS_DIR_NAME);
 }
 
-export function testUniqueIdentifierFromStartParams(startParams: { projectRoot: string; fullSuitePath: string; fullName: string }) {
-    /**
-     * we remove the projectRoot because this value is changing between machines.
-     * that way we can have consistent ids across machines
-     * if any problems arise we can change that
-     */
-    const onlyInterestingPath = path.relative(startParams.projectRoot, startParams.fullSuitePath);
-    const str = `${onlyInterestingPath}-${startParams.fullName}`;
-    return crypto.createHash('md5').update(str).digest('hex');
+export function testUniqueIdentifierFromStartParams(startParams: {
+  projectRoot: string;
+  fullSuitePath: string;
+  fullName: string;
+}) {
+  /**
+   * we remove the projectRoot because this value is changing between machines.
+   * that way we can have consistent ids across machines
+   * if any problems arise we can change that
+   */
+  const onlyInterestingPath = path.relative(startParams.projectRoot, startParams.fullSuitePath);
+  const str = `${onlyInterestingPath}-${startParams.fullName}`;
+  return crypto.createHash('md5').update(str).digest('hex');
 }
 
 // find something better? for now we are cool
 export function isNotPlaywrightPage(page: RootCausePage): page is PuppeteerPage {
-    return !('exposeBinding' in page);
+  return !('exposeBinding' in page);
 }
 
-
 export function isPlaywrightChromiumBrowserContext(context: BrowserContext): context is ChromiumBrowserContext {
-    // https://github.com/microsoft/playwright/blob/807dc1f3248571f5dcb13731c14b349e47c6e868/docs/api.md#chromiumbrowsercontextnewcdpsessionpage
-    return 'newCDPSession' in context;
+  // https://github.com/microsoft/playwright/blob/807dc1f3248571f5dcb13731c14b349e47c6e868/docs/api.md#chromiumbrowsercontextnewcdpsessionpage
+  return 'newCDPSession' in context;
 }
 
 export async function getSystemInfoForPage(page: RootCausePage): Promise<TestSystemInfo> {
-    if (isNotPlaywrightPage(page)) {
-        return getSystemInfoForPuppeteerPage(page);
-    }
+  if (isNotPlaywrightPage(page)) {
+    return getSystemInfoForPuppeteerPage(page);
+  }
 
-    return getSystemInfoForPlaywrightPage(page);
+  return getSystemInfoForPlaywrightPage(page);
 }
 
 export async function getSystemInfoForPlaywrightPage(page: PlaywrightPage): Promise<TestSystemInfo> {
-    const context = page.context();
+  const context = page.context();
 
-    if (isPlaywrightChromiumBrowserContext(context)) {
-        return getSystemInfoForPlaywrightChromiumPage(page, context);
-    }
+  if (isPlaywrightChromiumBrowserContext(context)) {
+    return getSystemInfoForPlaywrightChromiumPage(page, context);
+  }
 
-    const browserPlatform = await page.evaluate(() => navigator.platform);
-    const pageViewport = page.viewportSize() || await page.evaluate(() => ({
-        width: window.innerWidth,
-        height: window.innerHeight,
-    }));
-    const userAgent = await page.evaluate(() => navigator.userAgent);
+  const browserPlatform = await page.evaluate(() => navigator.platform);
+  const pageViewport =
+    page.viewportSize() ||
+    (await page.evaluate(() => ({
+      width: window.innerWidth,
+      height: window.innerHeight,
+    })));
+  const userAgent = await page.evaluate(() => navigator.userAgent);
 
-    return {
-        automationFramework: 'playwright',
-        browser: context.constructor.name === 'FFBrowserContext' ? 'firefox' : 'webkit',
-        pageViewport,
-        userAgent,
-        browserPlatform,
-        modelName: 'N/A',
-        modelVersion: 'N/A',
-        browserVersion: 'N/A',
-    };
+  return {
+    automationFramework: 'playwright',
+    browser: context.constructor.name === 'FFBrowserContext' ? 'firefox' : 'webkit',
+    pageViewport,
+    userAgent,
+    browserPlatform,
+    modelName: 'N/A',
+    modelVersion: 'N/A',
+    browserVersion: 'N/A',
+  };
 }
 
-export async function getSystemInfoForPlaywrightChromiumPage(page: PlaywrightPage, context: ChromiumBrowserContext): Promise<TestSystemInfo> {
-    // dirty, but working
-    // @ts-expect-error
-    const crBrowser: ChromiumBrowser = context._browser;
-    const cdpSession = await crBrowser.newBrowserCDPSession();
-    const systemInfo: DevtoolsProtocolResponseMap['SystemInfo.getInfo'] = await cdpSession.send('SystemInfo.getInfo') as DevtoolsProtocolResponseMap['SystemInfo.getInfo'];
-    const { modelName, modelVersion } = systemInfo;
+export async function getSystemInfoForPlaywrightChromiumPage(
+  page: PlaywrightPage,
+  context: ChromiumBrowserContext
+): Promise<TestSystemInfo> {
+  // dirty, but working
+  // @ts-expect-error
+  const crBrowser: ChromiumBrowser = context._browser;
+  const cdpSession = await crBrowser.newBrowserCDPSession();
+  const systemInfo: DevtoolsProtocolResponseMap['SystemInfo.getInfo'] = (await cdpSession.send(
+    'SystemInfo.getInfo'
+  )) as DevtoolsProtocolResponseMap['SystemInfo.getInfo'];
+  const { modelName, modelVersion } = systemInfo;
 
-    const browserPlatform = await page.evaluate(() => navigator.platform);
-    const pageViewport = page.viewportSize() || await page.evaluate(() => ({
-        width: window.innerWidth,
-        height: window.innerHeight,
-    }));
+  const browserPlatform = await page.evaluate(() => navigator.platform);
+  const pageViewport =
+    page.viewportSize() ||
+    (await page.evaluate(() => ({
+      width: window.innerWidth,
+      height: window.innerHeight,
+    })));
 
-    const userAgent = await page.evaluate(() => navigator.userAgent);
-    const browserVersion = 'N/A';
+  const userAgent = await page.evaluate(() => navigator.userAgent);
+  const browserVersion = 'N/A';
 
-    return {
-        automationFramework: 'playwright',
-        browser: 'chromium',
-        pageViewport,
-        userAgent,
-        browserVersion,
-        modelName,
-        modelVersion,
-        browserPlatform,
-    };
+  return {
+    automationFramework: 'playwright',
+    browser: 'chromium',
+    pageViewport,
+    userAgent,
+    browserVersion,
+    modelName,
+    modelVersion,
+    browserPlatform,
+  };
 }
 
 export async function getSystemInfoForPuppeteerPage(page: PuppeteerPage): Promise<TestSystemInfo> {
-    const browser = page.browser();
-    const browserPlatform = await page.evaluate(() => navigator.platform);
-    const pageViewport = page.viewport();
-    const userAgent = await browser.userAgent();
-    const browserVersion = await browser.version();
-    const browserTarget = browser.target();
+  const browser = page.browser();
+  const browserPlatform = await page.evaluate(() => navigator.platform);
+  const pageViewport = page.viewport();
+  const userAgent = await browser.userAgent();
+  const browserVersion = await browser.version();
+  const browserTarget = browser.target();
 
-    const cdpSession = await browserTarget.createCDPSession();
-    // https://chromedevtools.github.io/devtools-protocol/tot/SystemInfo/#type-ProcessInfo
-    const systemInfo: DevtoolsProtocolResponseMap['SystemInfo.getInfo'] = await cdpSession.send('SystemInfo.getInfo') as DevtoolsProtocolResponseMap['SystemInfo.getInfo'];
+  const cdpSession = await browserTarget.createCDPSession();
+  // https://chromedevtools.github.io/devtools-protocol/tot/SystemInfo/#type-ProcessInfo
+  const systemInfo: DevtoolsProtocolResponseMap['SystemInfo.getInfo'] = (await cdpSession.send(
+    'SystemInfo.getInfo'
+  )) as DevtoolsProtocolResponseMap['SystemInfo.getInfo'];
 
-    const { modelName, modelVersion } = systemInfo;
+  const { modelName, modelVersion } = systemInfo;
 
-    return {
-        automationFramework: 'puppeteer',
-        browser: 'chromium',
-        pageViewport,
-        userAgent,
-        browserVersion,
-        modelName,
-        modelVersion,
-        browserPlatform,
-    };
+  return {
+    automationFramework: 'puppeteer',
+    browser: 'chromium',
+    pageViewport,
+    userAgent,
+    browserVersion,
+    modelName,
+    modelVersion,
+    browserPlatform,
+  };
 }
 
 /**
@@ -148,60 +162,59 @@ export async function getSystemInfoForPuppeteerPage(page: PuppeteerPage): Promis
  *
  * @param userAgent
  */
-export function guessOperatingSystemUserAgent(): {name: string; version: string} {
-    return {
-        name: 'N/A',
-        version: 'N/A',
-    };
+export function guessOperatingSystemUserAgent(): { name: string; version: string } {
+  return {
+    name: 'N/A',
+    version: 'N/A',
+  };
 }
 
 export function assertNotNullOrUndefined<T>(value: T): asserts value is Exclude<T, undefined | null | void> {
-    if (value === undefined || value === null) {
-        throw new Error('value is nullable');
-    }
+  if (value === undefined || value === null) {
+    throw new Error('value is nullable');
+  }
 }
 
 export function nonNullable<T>(value: T): value is NonNullable<T> {
-    return value !== undefined && value !== null;
+  return value !== undefined && value !== null;
 }
 
 export function sleep(time: number, abortSignal?: AbortSignal) {
-    return new Promise<void>((res, rej) => {
-        if (abortSignal?.aborted) {
-            rej(new AbortError());
-            return;
-        }
+  return new Promise<void>((res, rej) => {
+    if (abortSignal?.aborted) {
+      rej(new AbortError());
+      return;
+    }
 
-        if (abortSignal) {
-            abortSignal.addEventListener('abort', onAbort);
-        }
+    if (abortSignal) {
+      abortSignal.addEventListener('abort', onAbort);
+    }
 
-        const timeoutHandle = setTimeout(timeoutCallback, time);
+    const timeoutHandle = setTimeout(timeoutCallback, time);
 
-        function timeoutCallback() {
-            if (abortSignal) {
-                abortSignal.removeEventListener('abort', onAbort);
-            }
-            res();
-        }
+    function timeoutCallback() {
+      if (abortSignal) {
+        abortSignal.removeEventListener('abort', onAbort);
+      }
+      res();
+    }
 
-        function onAbort() {
-            clearTimeout(timeoutHandle);
-            if (abortSignal) {
-                abortSignal.removeEventListener('abort', onAbort);
-            }
-            rej(new AbortError());
-        }
-    });
+    function onAbort() {
+      clearTimeout(timeoutHandle);
+      if (abortSignal) {
+        abortSignal.removeEventListener('abort', onAbort);
+      }
+      rej(new AbortError());
+    }
+  });
 }
 
 export class AbortError extends Error {
-    public name: 'AbortError' = 'AbortError';
+  public name: 'AbortError' = 'AbortError';
 }
 
-
 export function isAbortError(maybeAbortError: unknown): maybeAbortError is AbortError {
-    return maybeAbortError instanceof Error && maybeAbortError.name === 'AbortError';
+  return maybeAbortError instanceof Error && maybeAbortError.name === 'AbortError';
 }
 
 /**
@@ -209,90 +222,98 @@ export function isAbortError(maybeAbortError: unknown): maybeAbortError is Abort
  */
 const noiseKeys = new Set(['userAgent', 'modelName', 'modelVersion', 'browserPlatform', 'branchInfo']);
 export function jsonRemoveNoiseReviver(key: string, value: any) {
-    if (noiseKeys.has(key)) {
-        return `noise_removed:${key}`;
-    }
+  if (noiseKeys.has(key)) {
+    return `noise_removed:${key}`;
+  }
 
-    return value;
+  return value;
 }
 
 const noiseReducers = {
-    rect(rect: any): any {
-        return fromEntries(Object.entries(rect).map(([key]) => ([key, 'possible noise removed'])));
-    },
+  rect(rect: any): any {
+    return fromEntries(Object.entries(rect).map(([key]) => [key, 'possible noise removed']));
+  },
 };
 
 export function jsonReduceNoiseReviver(key: string, value: any) {
-    if (key in noiseReducers) {
-        // @ts-ignore
-        return noiseReducers[key](value);
-    }
+  if (key in noiseReducers) {
+    // @ts-ignore
+    return noiseReducers[key](value);
+  }
 
-    if (noiseKeys.has(key)) {
-        return `noise_removed:${key}`;
-    }
+  if (noiseKeys.has(key)) {
+    return `noise_removed:${key}`;
+  }
 
-    return value;
+  return value;
 }
 
 export function removeStringFromString(strToRemove: string, strToRemoveFrom: string): string {
-    return strToRemoveFrom.split(strToRemove).join('');
+  return strToRemoveFrom.split(strToRemove).join('');
 }
 
 export async function readJsonTestSnapshotFile(filePath: string) {
-    const str = await fs.readFile(filePath, 'utf8');
-    return JSON.parse(str, jsonReduceNoiseReviver);
+  const str = await fs.readFile(filePath, 'utf8');
+  return JSON.parse(str, jsonReduceNoiseReviver);
 }
 
-export function removeStringFromStringAndParse(strToRemove: string, strToRemoveFrom: string, reviver?: ((this: any, key: string, value: any) => any) | undefined) {
-    return JSON.parse(removeStringFromString(strToRemove, strToRemoveFrom), reviver);
+export function removeStringFromStringAndParse(
+  strToRemove: string,
+  strToRemoveFrom: string,
+  reviver?: ((this: any, key: string, value: any) => any) | undefined
+) {
+  return JSON.parse(removeStringFromString(strToRemove, strToRemoveFrom), reviver);
 }
 
 /**
  * Object.fromEntries is not available
  */
 function fromEntries(iterable: Iterable<[string, unknown]>) {
-    return [...iterable].reduce((obj, [key, val]) => {
-        obj[key] = val;
-        return obj;
-    }, {} as any);
+  return [...iterable].reduce((obj, [key, val]) => {
+    obj[key] = val;
+    return obj;
+  }, {} as any);
 }
 
 export function arrayFlat<T>(arr: T[][]): T[] {
-    return arr.reduce<T[]>((prev, curr) => {
-        prev.push(...curr);
-        return prev;
-    }, []);
+  return arr.reduce<T[]>((prev, curr) => {
+    prev.push(...curr);
+    return prev;
+  }, []);
 }
 
 export async function extractCodeErrorDetails(errorStack: string, assumedUserLine = 3): Promise<ICodeErrorDetails> {
-    // remove at processTicksAndRejections (internal/process/task_queues.js:97:5)
-    // when we have some other errors in jest, the stack trace looks different...
-    const lines = errorStack.split('\n').filter(line => !line.includes('at processTicksAndRejections'));
-    // const lineBeforeUserCode = lines.findIndex(l => l.includes('PuppeteerPageHooker'));
-    // const userLine = lines[lineBeforeUserCode + 1];
+  // remove at processTicksAndRejections (internal/process/task_queues.js:97:5)
+  // when we have some other errors in jest, the stack trace looks different...
+  const lines = errorStack.split('\n').filter((line) => !line.includes('at processTicksAndRejections'));
+  // const lineBeforeUserCode = lines.findIndex(l => l.includes('PuppeteerPageHooker'));
+  // const userLine = lines[lineBeforeUserCode + 1];
 
-    const userLine = lines[assumedUserLine];
-    const firstSlashIndex = userLine.indexOf('/');
-    const firstColonIndex = userLine.indexOf(':');
-    const filepath = userLine.substr(firstSlashIndex, firstColonIndex - firstSlashIndex);
-    const [row, column] = userLine.substr(firstColonIndex + 1).split(':').map(v => v.replace(/[^0-9]/g, '')).map(Number);
+  const userLine = lines[assumedUserLine];
+  const firstSlashIndex = userLine.indexOf('/');
+  const firstColonIndex = userLine.indexOf(':');
+  const filepath = userLine.substr(firstSlashIndex, firstColonIndex - firstSlashIndex);
+  const [row, column] = userLine
+    .substr(firstColonIndex + 1)
+    .split(':')
+    .map((v) => v.replace(/[^0-9]/g, ''))
+    .map(Number);
 
-    const rowCountToShow = 3;
-    const userFile = await fs.readFile(filepath, 'utf8');
-    const userLines = userFile.split('\n');
-    const fromRowNumber = Math.max(row - rowCountToShow, 1);
-    const toRowNumber = Math.min(row + rowCountToShow, userLines.length);
+  const rowCountToShow = 3;
+  const userFile = await fs.readFile(filepath, 'utf8');
+  const userLines = userFile.split('\n');
+  const fromRowNumber = Math.max(row - rowCountToShow, 1);
+  const toRowNumber = Math.min(row + rowCountToShow, userLines.length);
 
-    const errorLines = userLines.slice(fromRowNumber - 1, toRowNumber);
+  const errorLines = userLines.slice(fromRowNumber - 1, toRowNumber);
 
-    return {
-        errorLines,
-        fromRowNumber,
-        toRowNumber,
-        row,
-        column,
-    };
+  return {
+    errorLines,
+    fromRowNumber,
+    toRowNumber,
+    row,
+    column,
+  };
 }
 
 /**
@@ -302,46 +323,53 @@ export async function extractCodeErrorDetails(errorStack: string, assumedUserLin
  * If we want to avoid some of the code redundancy, we can turn it into generator
  */
 export function extractCodeErrorDetailsSync(errorStack: string, assumedUserLine = 3): ICodeErrorDetails {
-    const lines = errorStack.split('\n');
-    // const lineBeforeUserCode = lines.findIndex(l => l.includes('PuppeteerPageHooker'));
-    // const userLine = lines[lineBeforeUserCode + 1];
-    const userLine = lines[assumedUserLine];
-    const firstSlashIndex = userLine.indexOf('/');
-    const firstColonIndex = userLine.indexOf(':');
-    const filepath = userLine.substr(firstSlashIndex, firstColonIndex - firstSlashIndex);
-    const [row, column] = userLine.substr(firstColonIndex + 1).split(':').map(v => v.replace(/[^0-9]/g, '')).map(Number);
+  const lines = errorStack.split('\n');
+  // const lineBeforeUserCode = lines.findIndex(l => l.includes('PuppeteerPageHooker'));
+  // const userLine = lines[lineBeforeUserCode + 1];
+  const userLine = lines[assumedUserLine];
+  const firstSlashIndex = userLine.indexOf('/');
+  const firstColonIndex = userLine.indexOf(':');
+  const filepath = userLine.substr(firstSlashIndex, firstColonIndex - firstSlashIndex);
+  const [row, column] = userLine
+    .substr(firstColonIndex + 1)
+    .split(':')
+    .map((v) => v.replace(/[^0-9]/g, ''))
+    .map(Number);
 
-    const rowCountToShow = 3;
-    const userFile = fs.readFileSync(filepath, 'utf8');
-    const userLines = userFile.split('\n');
-    const fromRowNumber = Math.max(row - rowCountToShow, 1);
-    const toRowNumber = Math.min(row + rowCountToShow, userLines.length);
+  const rowCountToShow = 3;
+  const userFile = fs.readFileSync(filepath, 'utf8');
+  const userLines = userFile.split('\n');
+  const fromRowNumber = Math.max(row - rowCountToShow, 1);
+  const toRowNumber = Math.min(row + rowCountToShow, userLines.length);
 
-    const errorLines = userLines.slice(fromRowNumber - 1, toRowNumber);
+  const errorLines = userLines.slice(fromRowNumber - 1, toRowNumber);
 
-    return {
-        errorLines,
-        fromRowNumber,
-        toRowNumber,
-        row,
-        column,
-    };
+  return {
+    errorLines,
+    fromRowNumber,
+    toRowNumber,
+    row,
+    column,
+  };
 }
 
 export function isPromise(maybePromise: unknown): maybePromise is Promise<unknown> {
-    return typeof maybePromise === 'object' && maybePromise !== null &&
-        // @ts-ignore
-        typeof maybePromise.then === 'function';
+  return (
+    typeof maybePromise === 'object' &&
+    maybePromise !== null &&
+    // @ts-ignore
+    typeof maybePromise.then === 'function'
+  );
 }
 
 export function puppeteerAddEventReturnDisposer<TEventName extends keyof PuppeteerPageEventObj>(
-    page: PuppeteerPage,
-    eventName: TEventName,
-    handler: (e: PuppeteerPageEventObj[TEventName], ...args: any[]) => unknown
+  page: PuppeteerPage,
+  eventName: TEventName,
+  handler: (e: PuppeteerPageEventObj[TEventName], ...args: any[]) => unknown
 ) {
-    page.on(eventName, handler);
+  page.on(eventName, handler);
 
-    return function dispose() {
-        page.off(eventName, handler);
-    };
+  return function dispose() {
+    page.off(eventName, handler);
+  };
 }
